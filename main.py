@@ -1,23 +1,27 @@
 # IMPORTAÇÃO DAS BIBLIOTECAS NECESSÁRIAS
 #bibliotecas responsáveis por gerenciar as variáveis do ambiente:
-import os                                                                       
-from dotenv import load_dotenv, find_dotenv
+import os                                                                          # interação com o sistema operacional                                                           
+from dotenv import load_dotenv, find_dotenv                                        # carregamento e procura das variáveis de ambiente no .env
 
 #integra o langchain com o modelo de linguagem do GROQ
-from langchain_groq import ChatGroq
+from langchain_groq import ChatGroq                                                #vai permitir o uso do modelo gemma 2-9b-It
 
 #gerenciam o historico de mensagens 
-from langchain_community.chat_message_histories import ChatMessageHistory           #Armazenamento de mensagem de chat
-from langchain_core.chat_history import BaseChatMessageHistory 
+from langchain_community.chat_message_histories import ChatMessageHistory           #gerencia o historico de mensagens para armazenar interações
+from langchain_core.chat_history import BaseChatMessageHistory                      #classe base para históricos de chat no LangChain
 from langchain_core.runnables.history import RunnableWithMessageHistory             #Envolve um modelo de chat para manter o histórico de interações.
 
 #responsável pelo uso de prompt de template
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder  #estruturação de mensagens enviadas ao modelo de ia - chatprompt cria template de mensagens pre definidas e messagesplaceholder define um espaço reservado para as mensagens dinamicas
 
+# Manipula diferentes tipos de mensagens usadas pelo chatbot
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, trim_messages #human representa a mensagem do use, ai do modelo e system define regras gerais para o chatbot
 
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_core.runnables import RunnablePassthrough
-from operator import itemgetter
+#Cria fluxos de execução personalizados dentro do LangChain.
+from langchain_core.runnables import RunnablePassthrough # Aplica transformações no histórico de mensagens antes de enviá-las ao modelo
+
+#Facilita operações com dicionários e listas.
+from operator import itemgetter #Obtém o valor da chave "messages" de um dicionário.
 
 # Carregar as variáveis de ambiente do arquvo .env
 load_dotenv(find_dotenv())
@@ -105,64 +109,50 @@ city_data = {
     }
 }
 
-#model.invoke([HumanMessage(content="oi, eu moro em belo horizonte")]) #enviando a mensagem humana para processamento do modelo
+
 
 # Cria armazenamento para os históricos de conversa
 store = {}
 
-def get_session_history(session_id: str) -> BaseChatMessageHistory:
+def get_session_history(session_id: str) -> BaseChatMessageHistory: #classe base para manipulação do historico de mensagens
     """Recupera ou cria um histórico de mensagens para um usuário específico."""
     if session_id not in store:
-        store[session_id] = ChatMessageHistory()
+        store[session_id] = ChatMessageHistory()   #cria um historico de mensagens para armazenar interações
     return store[session_id]
 
 """O código acima define um dicionário store para armazenar históricos de mensagens. 
 A função get_session_history recupera ou inicializa um histórico de mensagens para uma sessão específica."""
 
-# with_message_history=RunnableWithMessageHistory(model,get_session_history)
-
-"""A classe RunnableWithMessageHistory é usada para associar o histórico de mensagens ao modelo de IA, permitindo conversas com contexto."""
-
-"""
-config={"configurable":{"session_id":"chat1"}}
-response=with_message_history.invoke(
-    [HumanMessage(content="oi, gostaria de saber mais sobre belo horizonte")],
-    config=config
-)
-response.content"""
-
-"""A variável config define a sessão da conversa.
- O método invoke é chamado para enviar uma mensagem e obter uma resposta do modelo, utilizando o histórico armazenado."""
+# Função para buscar informações da cidade
+def get_city_info(city: str) -> str:
+    """Retorna informações sobre a cidade se disponível."""
+    for nome_cidade in city_data.keys():  
+        if nome_cidade.lower() in city.lower():  # Verifica se a cidade está no input do usuário
+            info = city_data[nome_cidade]
+            return (
+                f"A cidade de {nome_cidade} tem uma população de {info['população']}. "
+                f"Seus principais pontos turísticos são {', '.join(info['pontos_turisticos'])}. "
+                f"A principal universidade da cidade é {info['universidade']}."
+            )
+    return "Desculpe, eu não tenho informações sobre essa cidade."
 
 # Criar um prompt template para estruturar as mensagens do chatbot
 prompt = ChatPromptTemplate.from_messages(
     [
         ("system", "Você é um assistente que fornece informações sobre cidades do Brasil."),
-        MessagesPlaceholder(variable_name="messages")
+        MessagesPlaceholder(variable_name="messages") 
     ]
 )
 
 # Conectar o modelo ao prompt template
 chain = prompt | model
 
-
-def get_city_info(city: str):
-    """Retorna informações sobre a cidade, se disponível."""
-    if city in city_data:
-        info = city_data[city]
-        return f"A cidade de {city} tem uma população de {info['população']}. Seus principais pontos turísticos são {', '.join(info['pontos_turisticos'])}. A principal universidade da cidade é {info['universidade']}."
-    else:
-        return "Desculpe, eu não tenho informações sobre essa cidade."
-
-
-# Criar um pipeline de execução otimizado
+# Criar um pipeline de execução
 pipeline = (
-    RunnablePassthrough.assign(messages=itemgetter("messages"))
-    | prompt
-    | model
+    RunnableWithMessageHistory(model, get_session_history)
 )
 
-def chatbot(session_id: str, user_message: str):
+def chatbot(session_id: str, user_message: str) -> str:
     """Processa a entrada do usuário e retorna a resposta do chatbot."""
     history = get_session_history(session_id)
     
