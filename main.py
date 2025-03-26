@@ -167,16 +167,3 @@ def chatbot(session_id: str, user_message: str) -> str:
 
     return response_text
 
-if __name__ == "__main__":
-    session_id = "chat1"  # Simulando uma sessão fixa
-
-    print("Bem-vindo ao Chatbot sobre cidades do Brasil! Digite 'sair' para encerrar.")
-    
-    while True:
-        user_input = input("Você: ")
-        if user_input.lower() == "sair":
-            print("Chatbot encerrado. Até mais!")
-            break
-        
-        resposta = chatbot(session_id, user_input)
-        print("Chatbot:", resposta)
